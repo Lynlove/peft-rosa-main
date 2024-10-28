@@ -20,7 +20,7 @@ from .layer import Embedding, Linear, RosaLayer
 from .model import RosaModel
 from .scheduler import RosaScheduler
 
-from .gptq import SVDQuantLinear
+# from .gptq import SVDQuantLinear
 
 __all__ = ["RosaConfig", "Conv2d", "Embedding", "RosaLayer", "Linear", "RosaModel"]
 

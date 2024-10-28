@@ -40,7 +40,7 @@ from peft.utils import (
 from peft.utils.integrations import gather_params_ctx
 
 from .config import RosaConfig
-from .gptq import SVDQuantLinear
+# from .gptq import SVDQuantLinear
 from .layer import RosaLayer, dispatch_default, RankAllocator, SVDLinear
 
 from transformers.pytorch_utils import Conv1D

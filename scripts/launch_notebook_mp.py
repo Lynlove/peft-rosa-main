@@ -20,11 +20,11 @@
 # This script exists to ensure that this issue does not reoccur.
 
 import torch
-import peft
 from accelerate import notebook_launcher
 
 
 def init():
+    import peft
     class MyModule(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -38,7 +38,7 @@ def init():
 
 
 def main():
-    notebook_launcher(init, (), num_processes=2)
+    notebook_launcher(init, (), num_processes=1)
 
 
 if __name__ == "__main__":
