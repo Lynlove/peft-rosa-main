@@ -378,7 +378,7 @@ class Linear(nn.Module, RosaLayer):
         RosaLayer.__init__(self, base_layer, impl, **kwargs)
 
         # Freezing the pre-trained weight matrix
-        self.get_base_layer().weight.requires_grad = False
+        # self.get_base_layer().weight.requires_grad = False
 
         self.fan_in_fan_out = fan_in_fan_out
 
