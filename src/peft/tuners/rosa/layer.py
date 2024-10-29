@@ -56,11 +56,11 @@ class RosaLayer(BaseTunerLayer):
         self.lora_alpha = {}
         self.scaling = {}
         self.lora_dropout = nn.ModuleDict({})
-        self.rosa_A = nn.ModuleDict({})
-        self.rosa_B = nn.ModuleDict({})
+        self.rosa_A = nn.ParameterDict({})
+        self.rosa_B = nn.ParameterDict({})
 
         # 添加的代码
-        self.rosa_E = nn.ModuleDict({})
+        self.rosa_E = nn.ParameterDict({})
         self.ranknum = nn.ParameterDict({})
 
         # For SpA
