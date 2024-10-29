@@ -145,25 +145,25 @@ class RosaLayer(BaseTunerLayer):
             self.scaling[adapter_name] = lora_alpha / r
         
         rosa_dtype = torch.bfloat16 if rosa_dtype == 'bf16' else (torch.float16 if rosa_dtype == 'fp16' else torch.float32)
-        if r > 0:
-            # self.rosa_A[adapter_name] = nn.Linear(self.in_features, r, bias=False, dtype=rosa_dtype)
-            # self.rosa_B[adapter_name] = nn.Linear(r, self.out_features, bias=False, dtype=rosa_dtype)
+        # if r > 0:
+        #     self.rosa_A[adapter_name] = nn.Linear(self.in_features, r, bias=False, dtype=rosa_dtype)
+        #     self.rosa_B[adapter_name] = nn.Linear(r, self.out_features, bias=False, dtype=rosa_dtype)
+        # else:
+        #     self.rosa_A[adapter_name] = nn.Identity()
+        #     self.rosa_B[adapter_name] = nn.Identity()
 
-            # 修改的代码
-            # Right singular vectors
-            self.rosa_A[adapter_name] = nn.Parameter(torch.randn(r, self.in_features, dtype=rosa_dtype))
-            # Singular values
-            self.rosa_E[adapter_name] = nn.Parameter(torch.randn(r, 1, dtype=rosa_dtype))
-            # Left singular vectors
-            self.rosa_B[adapter_name] = nn.Parameter(torch.randn(self.out_features, r, dtype=rosa_dtype))
-            # The current rank
-            self.ranknum[adapter_name] = nn.Parameter(torch.randn(1), requires_grad=False)
-            self.ranknum[adapter_name].data.fill_(float(r))
-            self.ranknum[adapter_name].requires_grad = False
-            self.scaling[adapter_name] = lora_alpha if lora_alpha > 0 else float(r)
-        else:
-            self.rosa_A[adapter_name] = nn.Identity()
-            self.rosa_B[adapter_name] = nn.Identity()
+        # 修改的代码
+        # Right singular vectors
+        self.rosa_A[adapter_name] = nn.Parameter(torch.randn(r, self.in_features, dtype=rosa_dtype))
+        # Singular values
+        self.rosa_E[adapter_name] = nn.Parameter(torch.randn(r, 1, dtype=rosa_dtype))
+        # Left singular vectors
+        self.rosa_B[adapter_name] = nn.Parameter(torch.randn(self.out_features, r, dtype=rosa_dtype))
+        # The current rank
+        self.ranknum[adapter_name] = nn.Parameter(torch.randn(1), requires_grad=False)
+        self.ranknum[adapter_name].data.fill_(float(r))
+        self.ranknum[adapter_name].requires_grad = False
+        self.scaling[adapter_name] = lora_alpha if lora_alpha > 0 else float(r)
 
         if init_lora_weights == "loftq":
             self.loftq_init(adapter_name)
@@ -205,6 +205,11 @@ class RosaLayer(BaseTunerLayer):
         self.set_adapter(self.active_adapters)
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
+        if adapter_name in self.rosa_A.keys():
+            nn.init.zeros_(self.rosa_E[adapter_name])
+            nn.init.normal_(self.rosa_A[adapter_name], mean=0.0, std=0.02)
+            nn.init.normal_(self.rosa_B[adapter_name], mean=0.0, std=0.02)
+
         if init_lora_weights is False:
             return
 
@@ -225,11 +230,6 @@ class RosaLayer(BaseTunerLayer):
         #     # initialize a the same way as the default for nn.linear and b to zero
         #     nn.init.zeros_(self.rosa_embedding_A[adapter_name])
         #     nn.init.normal_(self.rosa_embedding_B[adapter_name])
-
-        if adapter_name in self.rosa_A.keys():
-            nn.init.zeros_(self.rosa_E[adapter_name])
-            nn.init.normal_(self.rosa_A[adapter_name], mean=0.0, std=0.02)
-            nn.init.normal_(self.rosa_B[adapter_name], mean=0.0, std=0.02)
 
     def loftq_init(self, adapter_name):
         if self.r[adapter_name] <= 0:
@@ -356,7 +356,7 @@ class Linear(nn.Module, RosaLayer):
     # RoSA implemented in a dense layer
     def __init__(
         self,
-        base_layer,
+        base_layer: nn.Module,
         adapter_name: str,
         r: int = 0,
         d: float = 0.0,
@@ -376,6 +376,10 @@ class Linear(nn.Module, RosaLayer):
         if impl == 'auto':
             impl = 'sp_add'
         RosaLayer.__init__(self, base_layer, impl, **kwargs)
+
+        # Freezing the pre-trained weight matrix
+        self.get_base_layer().weight.requires_grad = False
+
         self.fan_in_fan_out = fan_in_fan_out
 
         self._active_adapter = adapter_name
@@ -459,12 +463,22 @@ class Linear(nn.Module, RosaLayer):
 
             weight_A = self.rosa_A[adapter].weight
             weight_B = self.rosa_B[adapter].weight
+            # 添加代码
+            weight_E = self.rosa_E[adapter].weight
 
             if cast_to_fp32:
                 weight_A = weight_A.float()
                 weight_B = weight_B.float()
+                # 添加代码
+                weight_E = weight_E.float()
 
-            output_tensor = transpose(weight_B @ weight_A, self.fan_in_fan_out) * self.scaling[adapter]
+            # output_tensor = transpose(weight_B @ weight_A, self.fan_in_fan_out) * self.scaling[adapter]
+            # 修改代码
+            output_tensor = (
+                transpose(self.rosa_B[adapter] @ (self.rosa_A[adapter] * self.rosa_E[adapter]), self.fan_in_fan_out)
+                * self.scaling[adapter]
+                / (self.ranknum[adapter] + 1e-5)
+            )
 
             if cast_to_fp32:
                 output_tensor = output_tensor.to(dtype=dtype)
@@ -472,7 +486,9 @@ class Linear(nn.Module, RosaLayer):
                 # cast back the weights
                 self.rosa_A[adapter].weight.data = weight_A.to(dtype)
                 self.rosa_B[adapter].weight.data = weight_B.to(dtype)
-        
+                # 添加代码
+                self.rosa_E[adapter].weight.data = weight_E.to(dtype)
+
         if self._spa_exists(adapter):
             spa_dense = self._convert_spa_to_dense(adapter).to(dtype)
             if output_tensor is None:
@@ -506,10 +522,20 @@ class Linear(nn.Module, RosaLayer):
                 if self.r[active_adapter] > 0:
                     rosa_A = self.rosa_A[active_adapter]
                     rosa_B = self.rosa_B[active_adapter]
+
+                    # 添加代码
+                    rosa_E = self.rosa_E[active_adapter]
+
                     dropout = self.lora_dropout[active_adapter]
                     scaling = self.scaling[active_adapter]
+
+                    # 添加代码
+                    ranknum = self.ranknum[active_adapter] + 1e-5
+
                     x = x.to(rosa_A.weight.dtype)
-                    result += rosa_B(rosa_A(dropout(x))) * scaling
+                    # result += rosa_B(rosa_A(dropout(x))) * scaling
+                    # 修改代码
+                    result += (dropout(x) @ (rosa_A * rosa_E).T @ rosa_B.T) * scaling / ranknum
 
                 if self._spa_exists(active_adapter):
                     spa_module = self.rosa_spa[active_adapter]
@@ -520,11 +546,16 @@ class Linear(nn.Module, RosaLayer):
                 dropout = self.lora_dropout[active_adapter]
                 dropout_rate = dropout.p if isinstance(dropout, nn.Dropout) else 0
                 scaling = self.scaling[active_adapter]
+                # 添加代码
+                ranknum = self.ranknum[active_adapter] + 1e-5
+                # 修改代码 添加参数 ranknum rosa_E
                 result = RoSALinearFunction.apply(
                     x,
                     self.get_base_layer(),
                     getattr(self.rosa_A[active_adapter], 'weight', None),
                     getattr(self.rosa_B[active_adapter], 'weight', None),
+                    getattr(self.rosa_E[active_adapter], 'weight', None),
+                    ranknum,
                     getattr(self.rosa_spa[active_adapter], 'values', None),
                     getattr(self.rosa_spa[active_adapter], 'row_offs', None),
                     getattr(self.rosa_spa[active_adapter], 'row_idx', None),
@@ -802,113 +833,6 @@ def dispatch_default(
         new_module = Linear(target, adapter_name, **kwargs)
 
     return new_module
-
-
-class SVDLinear(nn.Module, RosaLayer):
-    # SVD-based adaptation by a dense layer
-    def __init__(
-        self,
-        base_layer: nn.Module,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        fan_in_fan_out: bool = False,
-        init_lora_weights: bool = True,
-        **kwargs,
-    ) -> None:
-        super().__init__()
-        RosaLayer.__init__(self, base_layer)
-        # Freezing the pre-trained weight matrix
-        self.get_base_layer().weight.requires_grad = False
-
-        self.fan_in_fan_out = fan_in_fan_out
-        self._active_adapter = adapter_name
-        self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
-
-    def merge(self, safe_merge: bool = False, adapter_names: Optional[List[str]] = None) -> None:
-        """
-        Merge the active adapter weights into the base weights
-
-        Args:
-            safe_merge (`bool`, *optional*):
-                If True, the merge operation will be performed in a copy of the original weights and check for NaNs
-                before merging the weights. This is useful if you want to check if the merge operation will produce
-                NaNs. Defaults to `False`.
-            adapter_names (`List[str]`, *optional*):
-                The list of adapter names that should be merged. If None, all active adapters will be merged. Defaults
-                to `None`.
-        """
-        adapter_names = check_adapters_to_merge(self, adapter_names)
-        if not adapter_names:
-            # no adapter to merge
-            return
-
-        for active_adapter in adapter_names:
-            base_layer = self.get_base_layer()
-            if active_adapter in self.rosa_A.keys():
-                if safe_merge:
-                    # Note that safe_merge will be slower than the normal merge
-                    # because of the copy operation.
-                    orig_weights = base_layer.weight.data.clone()
-                    orig_weights += self.get_delta_weight(active_adapter)
-
-                    if not torch.isfinite(orig_weights).all():
-                        raise ValueError(
-                            f"NaNs detected in the merged weights. The adapter {active_adapter} seems to be broken"
-                        )
-
-                    base_layer.weight.data = orig_weights
-                else:
-                    base_layer.weight.data += self.get_delta_weight(active_adapter)
-                self.merged_adapters.append(active_adapter)
-
-    def unmerge(self) -> None:
-        """
-        This method unmerges all merged adapter layers from the base weights.
-        """
-        if not self.merged:
-            warnings.warn("Already unmerged. Nothing to do.")
-            return
-        while len(self.merged_adapters) > 0:
-            active_adapter = self.merged_adapters.pop()
-            if active_adapter in self.rosa_A.keys():
-                self.get_base_layer().weight.data -= self.get_delta_weight(active_adapter)
-
-    def get_delta_weight(self, adapter) -> torch.Tensor:
-        return (
-            transpose(self.rosa_B[adapter] @ (self.rosa_A[adapter] * self.rosa_E[adapter]), self.fan_in_fan_out)
-            * self.scaling[adapter]
-            / (self.ranknum[adapter] + 1e-5)
-        )
-
-    def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
-        if self.disable_adapters:
-            if self.merged:
-                self.unmerge()
-            result = self.base_layer(x, *args, **kwargs)
-        elif self.merged:
-            result = self.base_layer(x, *args, **kwargs)
-        else:
-            result = self.base_layer(x, *args, **kwargs)
-            for active_adapter in self.active_adapters:
-                if active_adapter not in self.rosa_A.keys():
-                    continue
-                rosa_A = self.rosa_A[active_adapter]
-                rosa_B = self.rosa_B[active_adapter]
-                rosa_E = self.rosa_E[active_adapter]
-                dropout = self.lora_dropout[active_adapter]
-                scaling = self.scaling[active_adapter]
-                ranknum = self.ranknum[active_adapter] + 1e-5
-
-                x = x.to(rosa_A.dtype)
-                result += (dropout(x) @ (rosa_A * rosa_E).T @ rosa_B.T) * scaling / ranknum
-
-        return result
-
-    def __repr__(self) -> str:
-        rep = super().__repr__()
-        return "adalora." + rep
 
 
 class RankAllocator:

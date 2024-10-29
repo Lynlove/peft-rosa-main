@@ -28,6 +28,17 @@ class RosaConfig(PeftConfig):
     This is the configuration class to store the configuration of a [`RosaModel`].
 
     Args:
+        新增ada参数:
+        target_r (`int`): The target average rank of incremental matrix.
+        init_r (`int`): The initial rank for each incremental matrix.
+        tinit (`int`): The steps of initial fine-tuning warmup.
+        tfinal (`int`): The step of final fine-tuning.
+        deltaT (`int`): The time internval between two budget allocations.
+        beta1 (`float`): The hyperparameter of EMA for sensitivity smoothing.
+        beta2 (`float`): The hyperparameter of EMA for undertainty quantification.
+        orth_reg_weight (`float`): The coefficient of orthogonal regularization.
+        total_step (`int`): The total training steps that should be specified before training.
+        rank_pattern (`list`): The allocated rank for each weight matrix by RankAllocator.
         r (`int`):
             Lora attention dimension (the "rank").
         d (`float`):
@@ -110,6 +121,16 @@ class RosaConfig(PeftConfig):
             and initialize Lora layers. Also pass `init_lora_weights='loftq'`. Note that you should not pass a
             quantized model in this case, as LoftQ will quantize the model itself.
     """
+    target_r: int = field(default=8, metadata={"help": "Target Lora matrix dimension."})
+    init_r: int = field(default=12, metadata={"help": "Intial Lora matrix dimension."})
+    tinit: int = field(default=0, metadata={"help": "The steps of initial warmup."})
+    tfinal: int = field(default=0, metadata={"help": "The steps of final warmup."})
+    deltaT: int = field(default=1, metadata={"help": "Step interval of rank allocation."})
+    beta1: float = field(default=0.85, metadata={"help": "Hyperparameter of EMA."})
+    beta2: float = field(default=0.85, metadata={"help": "Hyperparameter of EMA."})
+    orth_reg_weight: float = field(default=0.5, metadata={"help": "The orthogonal regularization coefficient."})
+    total_step: Optional[int] = field(default=None, metadata={"help": "The total training steps."})
+    rank_pattern: Optional[dict] = field(default=None, metadata={"help": "The saved rank pattern."})
 
     r: int = field(default=8, metadata={"help": "LoRA attention dimension"})
     d: int = field(default=0.003, metadata={"help": "SpA density"})

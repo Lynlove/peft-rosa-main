@@ -30,7 +30,7 @@ from .rosa_functions import RoSALinearFunction
 
 if is_bnb_available():
 
-    class SVDLinear8bitLt(torch.nn.Module, RosaLayer):
+    class Linear8bitLt(torch.nn.Module, RosaLayer):
         # RoSA implemented in a dense layer
         def __init__(
             self,
@@ -51,6 +51,9 @@ if is_bnb_available():
 
             impl = 'spmm'
             RosaLayer.__init__(self, base_layer, impl=impl)
+
+            # Freezing the pre-trained weight matrix
+            self.get_base_layer().weight.requires_grad = False
 
             self._active_adapter = adapter_name
             self.update_layer(adapter_name, r, d, lora_alpha, lora_dropout, spa_store_transpose, rosa_dtype, init_lora_weights, use_rslora)
@@ -245,14 +248,14 @@ if is_bnb_available():
                     "index": target.index,
                 }
             )
-            new_module = SVDLinear8bitLt(target, adapter_name, **eightbit_kwargs)
+            new_module = Linear8bitLt(target, adapter_name, **eightbit_kwargs)
 
         return new_module
 
 
 if is_bnb_4bit_available():
 
-    class SVDLinear4bit(torch.nn.Module, RosaLayer):
+    class Linear4bit(torch.nn.Module, RosaLayer):
         # Rosa implemented in a dense layer
         def __init__(
             self,
@@ -274,6 +277,8 @@ if is_bnb_4bit_available():
             if impl == 'auto':
                 impl = 'sp_add'
             RosaLayer.__init__(self, base_layer, impl)
+            # Freezing the pre-trained weight matrix
+            self.get_base_layer().weight.requires_grad = False
 
             self._active_adapter = adapter_name
             self.update_layer(adapter_name, r, d, lora_alpha, lora_dropout, spa_store_transpose, rosa_dtype, init_lora_weights, use_rslora)
@@ -430,11 +435,14 @@ if is_bnb_4bit_available():
                     dropout = self.lora_dropout[active_adapter]
                     dropout_rate = dropout.p if isinstance(dropout, nn.Dropout) else 0
                     scaling = self.scaling[active_adapter]
+                    ranknum = self.ranknum[active_adapter] + 1e-5
                     result = RoSALinearFunction.apply(
                         x,
                         self.get_base_layer(),
                         getattr(self.rosa_A[active_adapter], 'weight', None),
                         getattr(self.rosa_B[active_adapter], 'weight', None),
+                        getattr(self.rosa_E[active_adapter], 'weight', None),
+                        ranknum,
                         getattr(self.rosa_spa[active_adapter], 'values', None),
                         getattr(self.rosa_spa[active_adapter], 'row_offs', None),
                         getattr(self.rosa_spa[active_adapter], 'row_idx', None),
@@ -470,6 +478,6 @@ if is_bnb_4bit_available():
                     "quant_type": target_base_layer.weight.quant_type,
                 }
             )
-            new_module = SVDLinear4bit(target, adapter_name, **fourbit_kwargs)
+            new_module = Linear4bit(target, adapter_name, **fourbit_kwargs)
 
         return new_module

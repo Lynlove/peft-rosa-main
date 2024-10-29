@@ -41,7 +41,7 @@ from peft.utils.integrations import gather_params_ctx
 
 from .config import RosaConfig
 # from .gptq import SVDQuantLinear
-from .layer import RosaLayer, dispatch_default, RankAllocator, SVDLinear
+from .layer import RosaLayer, dispatch_default, RankAllocator, Linear
 
 from transformers.pytorch_utils import Conv1D
 
@@ -327,7 +327,7 @@ class RosaModel(BaseTuner):
                     f"Target module {target} is not supported. "
                     f"Currently, only `torch.nn.Linear` and `Conv1D` are supported."
                 )
-            new_module = SVDLinear(target, adapter_name, **kwargs)
+            new_module = Linear(target, adapter_name, **kwargs)
 
             # 注释原代码
             # no module could be matched

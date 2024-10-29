@@ -16,33 +16,33 @@
 from peft.import_utils import is_bnb_4bit_available, is_bnb_available
 
 from .config import RosaConfig
-from .layer import Embedding, Linear, RosaLayer
+from .layer import Embedding, Linear, RosaLayer, RankAllocator
 from .model import RosaModel
 from .scheduler import RosaScheduler
 
 # from .gptq import SVDQuantLinear
 
-__all__ = ["RosaConfig", "Conv2d", "Embedding", "RosaLayer", "Linear", "RosaModel"]
+__all__ = ["RosaConfig", "Conv2d", "Embedding", "RosaLayer", "RankAllocator", "Linear", "RosaModel"]
 
 
 def __getattr__(name):
     if (name == "Linear8bitLt") and is_bnb_available():
-        from .bnb import SVDLinear8bitLt
+        from .bnb import Linear8bitLt
 
-        return SVDLinear8bitLt
+        return Linear8bitLt
 
     if (name == "Linear4bit") and is_bnb_4bit_available():
-        from .bnb import SVDLinear4bit
+        from .bnb import Linear4bit
 
-        return SVDLinear4bit
+        return Linear4bit
 
     if (name == "SVDLinear8bitLt") and is_bnb_available():
-        from .bnb import SVDLinear8bitLt
+        from .bnb import Linear8bitLt
 
-        return SVDLinear8bitLt
+        return Linear8bitLt
 
     if (name == "SVDLinear4bit") and is_bnb_4bit_available():
-        from .bnb import SVDLinear4bit
+        from .bnb import Linear4bit
 
-        return SVDLinear4bit
+        return Linear4bit
     raise AttributeError(f"module {__name__} has no attribute {name}")
