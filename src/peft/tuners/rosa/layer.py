@@ -532,7 +532,9 @@ class Linear(nn.Module, RosaLayer):
                     # 添加代码
                     ranknum = self.ranknum[active_adapter] + 1e-5
 
-                    x = x.to(rosa_A.weight.dtype)
+                    # 注释代码
+                    # x = x.to(rosa_A.weight.dtype)
+
                     # result += rosa_B(rosa_A(dropout(x))) * scaling
                     # 修改代码
                     result += (dropout(x) @ (rosa_A * rosa_E).T @ rosa_B.T) * scaling / ranknum
