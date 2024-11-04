@@ -151,6 +151,7 @@ class RoSALinearFunction(torch.autograd.Function):
     @once_differentiable
     @torch.cuda.amp.custom_bwd
     def backward(ctx, dO):
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         dO = dO.reshape(-1, dO.shape[-1])
         X, orig_W, LA, LB, LE, ranknum, S_val, S_row_offs, S_row_idx, S_col_idx, D = ctx.saved_tensors
 

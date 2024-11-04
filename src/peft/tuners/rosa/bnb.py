@@ -53,7 +53,7 @@ if is_bnb_available():
             RosaLayer.__init__(self, base_layer, impl=impl)
 
             # Freezing the pre-trained weight matrix
-            # self.get_base_layer().weight.requires_grad = False
+            self.get_base_layer().weight.requires_grad = False
 
             self._active_adapter = adapter_name
             self.update_layer(adapter_name, r, d, lora_alpha, lora_dropout, spa_store_transpose, rosa_dtype, init_lora_weights, use_rslora)
@@ -278,7 +278,7 @@ if is_bnb_4bit_available():
                 impl = 'sp_add'
             RosaLayer.__init__(self, base_layer, impl)
             # Freezing the pre-trained weight matrix
-            # self.get_base_layer().weight.requires_grad = False
+            self.get_base_layer().weight.requires_grad = False
 
             self._active_adapter = adapter_name
             self.update_layer(adapter_name, r, d, lora_alpha, lora_dropout, spa_store_transpose, rosa_dtype, init_lora_weights, use_rslora)
